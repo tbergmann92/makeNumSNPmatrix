@@ -292,3 +292,79 @@ class DataMatrix:
         # save as interactive html
         out_pict3 = os.path.join(self.output_dir, "PCA.html").replace("\\", "/")
         fig.write_html(out_pict3)
+    #
+    def calculate_kinship_matrix(self):
+        # retrieve matrix from object
+        genotype_matrix = self.numeric_matrix
+        # transpose the matrix
+        genotype_matrix_transposed = genotype_matrix.T
+        # filter for monomorphic marker
+        filter_values = ["3","2","1","0"]
+        for value in filter_values:
+            genotype_matrix_transposed = genotype_matrix_transposed.loc[:,(genotype_matrix_transposed != value).any()]
+        # mark values as integers
+        genotype_matrix_transposed = genotype_matrix_transposed.astype(int)
+        # centering by subtracting the row mean
+        centered_genotype_matrix = genotype_matrix_transposed.sub(genotype_matrix_transposed.mean(axis=1), axis=0)
+        # calculate kinship matrix
+        kinship_matrix = np.dot(centered_genotype_matrix, centered_genotype_matrix.T)/genotype_matrix_transposed.shape[1]
+        # convert to dataframe
+        kinship_dataframe = pd.DataFrame(kinship_matrix, index=genotype_matrix_transposed.index,  columns=genotype_matrix_transposed.index)
+        self.kinship_matrix = kinship_dataframe
+    #
+    def save_results_to_excel(self):
+        out_excel = os.path.join(self.output_dir, "Results.xlsx").replace("\\", "/")
+        with pd.ExcelWriter(out_excel) as writer:
+            self.marker_statistics.to_excel(writer, sheet_name="marker_statistics", index=False)
+            self.marker_status.to_excel(writer, sheet_name="marker_status", index=False)
+            self.numeric_matrix.to_excel(writer, sheet_name="numeric_matrix", index=True)
+            self.kinship_matrix.to_excel(writer, sheet_name="kinship_matrix")
+#
+chip_data = DataMatrix(input_file="xxx.xlsx", sheet=0, output_dir="Test")
+chip_data.load_data()
+chip_data.create_output_directory()
+chip_data.data_check()
+chip_data.calc_snp_stats()
+chip_data.calc_marker_status()
+chip_data.generate_numeric_matrix()
+chip_data.calculate_pca()
+chip_data.calculate_kinship_matrix()
+chip_data.save_results_to_excel()
+
+# extract the numeric matrix
+numeric_matrix = chip_data.numeric_matrix
+# transpose for marker filtering
+numeric_matrix_transposed = numeric_matrix.T
+# remove monomorphic snps
+filter_values = [3,2,1,0]
+for value in filter_values:
+    numeric_matrix_transposed = numeric_matrix_transposed.loc[:,(numeric_matrix_transposed != value).any()]
+
+# re-transpose the matrix
+numeric_matrix = numeric_matrix_transposed.T
+# remove snps with MAF < 0.05    
+maf_results = {}
+snp_list, maf_list = [], []
+for idx, row in numeric_matrix.iterrows():
+    #print(idx,"\n",row)
+    allele_counts = {0: 0, 1: 0, 2: 0, 3: 0}
+    for value in row.values:
+        allele_counts[value] = allele_counts.get(value, 0) + 1   
+    # calculate MAF
+    maf = allele_counts[0] / sum(allele_counts.values())
+    maf_results[idx] = maf
+    # append to list
+    snp_list.append(idx)
+    maf_list.append(f"{maf:.4f}")
+
+# merge lists into dataframe
+maf_data = pd.DataFrame({"SNP": snp_list, "MAF": maf_list})
+    
+
+    
+
+# define variables
+num_alleles, num_allele_list = [], []
+all_allele_counts = {}
+# retrieve all snp calls for the marker
+snp_calls = list(row.values)
