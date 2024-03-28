@@ -331,6 +331,8 @@ chip_data.calculate_pca()
 chip_data.calculate_kinship_matrix()
 chip_data.save_results_to_excel()
 
+## check once again and then integrate into script
+
 # extract the numeric matrix
 numeric_matrix = chip_data.numeric_matrix
 # transpose for marker filtering
@@ -361,10 +363,9 @@ for idx, row in numeric_matrix.iterrows():
 maf_data = pd.DataFrame({"SNP": snp_list, "MAF": maf_list})
     
 
-    
 
 # define variables
 num_alleles, num_allele_list = [], []
 all_allele_counts = {}
 # retrieve all snp calls for the marker
-snp_calls = list(row.values)
+snp_calls = list(row.values)    
