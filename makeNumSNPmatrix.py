@@ -10,6 +10,7 @@
 import os
 import sys
 import openpyxl
+import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,6 +19,28 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt  
 import plotly.express as px
 
+# Argument Parsing
+parser = argparse.ArgumentParser(description = "Script for analyzing and converting SNP-chip data.",
+                                 epilog="Note: input matrix should be in (n x m) format with markers as n-rows and genotypes as m-columns.",
+                                 usage = "python3 pyChip.py -i ./path/to/input.xlsx -o ./path/to/outputDir",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument("-i", "--input", help = "SNP chip data to be analyzed (first excel sheet will be used!)", required=True)
+parser.add_argument("-o", "--outputDir", help = "Define the output folder for results", required=True) 
+
+# Add validation checks for required arguments
+args = parser.parse_args()
+
+# Check input parameters
+if not all ([args.input, args.outputDir]):
+    sys.exit("\033[1;31;40m ERROR! All of the following arguments are required: -i/--input, -o/--outputDir")
+
+# Input file validation function
+def check_file_existence(file_path):
+    if not os.path.isfile(file_path):
+        sys.exit(f"{file_path} doesn't exist! Please check your input files.")
+
+# Check whether input file exists
+check_file_existence(args.input)
 
 # create the matrix object
 class DataMatrix:
@@ -30,20 +53,28 @@ class DataMatrix:
         self.marker_statistics = None
         self.marker_status = None
         self.numeric_matrix = None
+        self.kinship_matrix = None
+        self.maf_data = None
+        self.hapmap = None
     #
-    def create_output_directory(self):
+    def create_output_directory(self, overwrite=True):
         """ Checks whether output already exists."""
-        try:
-            os.mkdir(self.output_dir)
-        except FileExistsError:
-            sys.exit("\033[1;31;40m Attention! Output directory already exists!")
+        if os.path.exists(self.output_dir):
+            if overwrite:
+                os.makedirs(self.output_dir, exist_ok=True)
+                return self.output_dir
+            else:
+                sys.exit("\033[1;31;40m Attention! Output directory already exists!")
+        else:
+            os.makedirs(self.output_dir)
+            return self.output_dir
     #
     def load_data(self):
         """ Loads input and converts "failed" to "-". """
         try:
             self.raw_data = pd.read_excel(self.input_file, sheet_name=self.sheet, index_col=0)
             self.raw_data = self.raw_data.replace(["failed"],"-")
-            print("Loaded data succesfully!")
+            #print("Loaded data succesfully!")
         except FileNotFoundError:
             sys.exit("Error: Input file not found! Please check your file path.")
         except pd.errors.EmptyDataError:
@@ -241,20 +272,22 @@ class DataMatrix:
                         num_allele_list.append(value)
             row_id.append(idx)
             new_cols.append(all_allele_counts)
-            #print(idx, all_allele_counts)
             num_alleles = ",".join(num_allele_list)
             new_num_row = (f"{idx},{num_alleles}")
             num_df.loc[len(num_df)] = new_num_row.split(",")    
-        self.numeric_matrix = num_df
         marker_statistics = pd.DataFrame(new_cols).fillna(0)
         marker_statistics.insert(0, "Marker", row_id)
-        # add to object
+        num_df_col = num_df.loc[:,"Marker"].tolist()
+        num_df = num_df.drop(num_df.columns[0], axis=1)
+        num_df.index = num_df_col
+        num_df = num_df.astype(int)
+        # add to object 
         self.numeric_matrix = num_df
         self.marker_statistics = marker_statistics
     #
     def calculate_pca(self):
         numeric_matrix_transposed = self.numeric_matrix.set_index("Marker").T
-        filter_values = ["3","2","1","0"]
+        filter_values = [3,2,1,0]
         # filtering and preparing the data
         for value in filter_values:
             numeric_matrix_transposed = numeric_matrix_transposed.loc[:,(numeric_matrix_transposed != value).any()]
@@ -338,6 +371,66 @@ class DataMatrix:
         maf_data["MAF"] = maf_data["MAF"].astype(float)
         self.maf_data = maf_data
     #
+    def make_hapmap(self):
+        hapmap = self.raw_data
+        # replace fails and ambigous codes
+        characters_to_replace = {"R" : "", 
+                                 "Y" : "", 
+                                 "S" : "", 
+                                 "W" : "", 
+                                 "K" : "", 
+                                 "M" : "", 
+                                 "-" : ""}
+        # list for the allele column that will be added
+        allele_list = []
+        failed_call = "/-"
+        # iterate through rows
+        for idx, row in hapmap.iterrows():
+            # get unique characters in each row as list, skip first two columns
+            unique_nucleotides = set(row.values)
+            # join the unique characters into one string and replace fails and ambigous bases
+            nucleotides = "".join(unique_nucleotides).translate(str.maketrans(characters_to_replace))
+            # check if only one allele information is provided and add "/-" and add to the list
+            if len(nucleotides) == 1:
+                alleles = nucleotides + failed_call
+            elif len(nucleotides) < 1:
+                alleles = "-/-"
+            # if both allele information are provided add it to the list
+            else:
+                alleles = ("/".join(nucleotides))
+            allele_list.append(alleles)
+        # add as column to dataframe at first position
+        hapmap.insert(0, "Alleles", allele_list)
+        # change allele coding
+        alleles_to_replace = {"A" : "AA",
+                              "G" : "GG",
+                              "C" : "CC",
+                              "T" : "TT",
+                              "R" : "AG",
+                              "Y" : "CT",
+                              "S" : "GC",
+                              "W" : "AT",
+                              "K" : "GT",
+                              "M" : "AC",
+                              "-" : "NN"
+                             }
+        # replace the values in the selected matrix
+        hapmap = hapmap.replace(alleles_to_replace)
+        ## load physical data (will be added in the future)
+        #marker_physical_positions = pd.read_excel("Faba_Positions.xlsx", sheet_name="Tabelle1")
+        #marker_physical_positions.set_index("Name", inplace=True)
+        #hapmap = pd.merge(hapmap, marker_physical_positions[["CHR", "POS"]], left_index=True, right_index=True, how="left")
+        # add hapmap columns
+        hapmap.insert(2, "strand", "+")
+        hapmap.insert(3, "assembly", "NA")
+        hapmap.insert(4, "center", "NA")
+        hapmap.insert(5, "protLSID", "NA")
+        hapmap.insert(6, "assayLSID", "NA")
+        hapmap.insert(7, "panelLSID", "NA")
+        hapmap.insert(8, "QCcode", "NA")
+        #hapmap.drop(["CHR","POS"], axis=1, inplace=True)
+        self.hapmap = hapmap
+    #
     def save_results_to_excel(self):
         out_excel = os.path.join(self.output_dir, "Results.xlsx").replace("\\", "/")
         with pd.ExcelWriter(out_excel) as writer:
@@ -346,14 +439,27 @@ class DataMatrix:
             self.maf_data.to_excel(writer, sheet_name="maf", index=False)
             self.numeric_matrix.to_excel(writer, sheet_name="numeric_matrix", index=True)
             self.kinship_matrix.to_excel(writer, sheet_name="kinship_matrix")
+            self.hapmap.to_excel(writer, sheet_name="hapmap", index=True)
 #
-chip_data = DataMatrix(input_file="xxx.xlsx", sheet=0, output_dir="Test")
-chip_data.load_data()
-chip_data.create_output_directory()
-chip_data.data_check()
-chip_data.calc_snp_stats()
-chip_data.calc_marker_status()
-chip_data.generate_numeric_matrix()
-chip_data.calculate_pca()
-chip_data.calculate_kinship_matrix()
-chip_data.save_results_to_excel()
+if __name__ == "__main__":
+    chip_data = DataMatrix(input_file=args.input, sheet=0, output_dir=args.outputDir)
+    print("\nLoading data ...")
+    chip_data.load_data()
+    chip_data.data_check()
+    print("\nLoaded data successfully!")
+    chip_data.create_output_directory()
+    print("\nCalculating SNP and marker stats ...")
+    chip_data.calc_snp_stats()
+    chip_data.calc_marker_status()
+    print("\nGenerating numeric matrix ...")
+    chip_data.generate_numeric_matrix()
+    print("\nPerforming PCA ...")
+    chip_data.calculate_pca()
+    print("\nCalculating kinship ...")
+    chip_data.calculate_kinship_matrix()
+    print("\nCalculating MAF ...")
+    chip_data.calculate_maf()
+    print("\nConverting to HAPMAP ...")
+    chip_data.make_hapmap()
+    print("\nSaving results ...")
+    chip_data.save_results_to_excel()
