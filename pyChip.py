@@ -421,13 +421,13 @@ class DataMatrix:
         #marker_physical_positions.set_index("Name", inplace=True)
         #hapmap = pd.merge(hapmap, marker_physical_positions[["CHR", "POS"]], left_index=True, right_index=True, how="left")
         # add hapmap columns
-        hapmap.insert(2, "strand", "+")
-        hapmap.insert(3, "assembly", "NA")
-        hapmap.insert(4, "center", "NA")
-        hapmap.insert(5, "protLSID", "NA")
-        hapmap.insert(6, "assayLSID", "NA")
-        hapmap.insert(7, "panelLSID", "NA")
-        hapmap.insert(8, "QCcode", "NA")
+        hapmap.insert(1, "strand", "+")
+        hapmap.insert(2, "assembly", "NA")
+        hapmap.insert(3, "center", "NA")
+        hapmap.insert(4, "protLSID", "NA")
+        hapmap.insert(5, "assayLSID", "NA")
+        hapmap.insert(6, "panelLSID", "NA")
+        hapmap.insert(7, "QCcode", "NA")
         #hapmap.drop(["CHR","POS"], axis=1, inplace=True)
         self.hapmap = hapmap
     #
