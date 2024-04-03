@@ -312,11 +312,38 @@ class DataMatrix:
         kinship_dataframe = pd.DataFrame(kinship_matrix, index=genotype_matrix_transposed.index,  columns=genotype_matrix_transposed.index)
         self.kinship_matrix = kinship_dataframe
     #
+    def calculate_maf(self):
+        numeric_matrix_transposed = self.numeric_matrix.T
+        # remove monomorphic markers
+        filter_values = [3,2,1,0]
+        for value in filter_values:
+            numeric_matrix_transposed = numeric_matrix_transposed.loc[:,(numeric_matrix_transposed != value).any()]
+        # re-transpose the matrix
+        numeric_matrix = numeric_matrix_transposed.T
+        # count maf    
+        maf_results = {}
+        snp_list, maf_list = [], []
+        for idx, row in numeric_matrix.iterrows():
+            allele_counts = {0: 0, 1: 0, 2: 0, 3: 0}
+            for value in row.values:
+                allele_counts[value] = allele_counts.get(value, 0) + 1
+            # calculate MAF
+            maf = allele_counts[0] / sum(allele_counts.values())
+            maf_results[idx] = maf
+            # append to list
+            snp_list.append(idx)
+            maf_list.append(f"{maf:.4f}")
+        # merge into data frame
+        maf_data = pd.DataFrame({"SNP": snp_list, "MAF": maf_list})
+        maf_data["MAF"] = maf_data["MAF"].astype(float)
+        self.maf_data = maf_data
+    #
     def save_results_to_excel(self):
         out_excel = os.path.join(self.output_dir, "Results.xlsx").replace("\\", "/")
         with pd.ExcelWriter(out_excel) as writer:
             self.marker_statistics.to_excel(writer, sheet_name="marker_statistics", index=False)
             self.marker_status.to_excel(writer, sheet_name="marker_status", index=False)
+            self.maf_data.to_excel(writer, sheet_name="maf", index=False)
             self.numeric_matrix.to_excel(writer, sheet_name="numeric_matrix", index=True)
             self.kinship_matrix.to_excel(writer, sheet_name="kinship_matrix")
 #
@@ -330,42 +357,3 @@ chip_data.generate_numeric_matrix()
 chip_data.calculate_pca()
 chip_data.calculate_kinship_matrix()
 chip_data.save_results_to_excel()
-
-## check once again and then integrate into script
-
-# extract the numeric matrix
-numeric_matrix = chip_data.numeric_matrix
-# transpose for marker filtering
-numeric_matrix_transposed = numeric_matrix.T
-# remove monomorphic snps
-filter_values = [3,2,1,0]
-for value in filter_values:
-    numeric_matrix_transposed = numeric_matrix_transposed.loc[:,(numeric_matrix_transposed != value).any()]
-
-# re-transpose the matrix
-numeric_matrix = numeric_matrix_transposed.T
-# remove snps with MAF < 0.05    
-maf_results = {}
-snp_list, maf_list = [], []
-for idx, row in numeric_matrix.iterrows():
-    #print(idx,"\n",row)
-    allele_counts = {0: 0, 1: 0, 2: 0, 3: 0}
-    for value in row.values:
-        allele_counts[value] = allele_counts.get(value, 0) + 1   
-    # calculate MAF
-    maf = allele_counts[0] / sum(allele_counts.values())
-    maf_results[idx] = maf
-    # append to list
-    snp_list.append(idx)
-    maf_list.append(f"{maf:.4f}")
-
-# merge lists into dataframe
-maf_data = pd.DataFrame({"SNP": snp_list, "MAF": maf_list})
-    
-
-
-# define variables
-num_alleles, num_allele_list = [], []
-all_allele_counts = {}
-# retrieve all snp calls for the marker
-snp_calls = list(row.values)    
