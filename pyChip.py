@@ -22,10 +22,11 @@ import plotly.express as px
 # Argument Parsing
 parser = argparse.ArgumentParser(description = "Script for analyzing and converting SNP-chip data.",
                                  epilog="Note: input matrix should be in (n x m) format with markers as n-rows and genotypes as m-columns.",
-                                 usage = "python3 pyChip.py -i ./path/to/input.xlsx -o ./path/to/outputDir",
+                                 usage = "python3 pyChip.py -i ./path/to/input.xlsx -o ./path/to/outputDir -r ./path/to/color_coding_file",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--input", help = "SNP chip data to be analyzed (first excel sheet will be used!)", required=True)
 parser.add_argument("-o", "--outputDir", help = "Define the output folder for results", required=True) 
+parser.add_argument("-r", "--color_coding_file_pca", help = "Define the groups and the color coding for the pca plot", required=False) 
 
 # Add validation checks for required arguments
 args = parser.parse_args()
@@ -286,9 +287,10 @@ class DataMatrix:
         self.marker_statistics = marker_statistics
     #
     def calculate_pca(self):
-        numeric_matrix_transposed = self.numeric_matrix.set_index("Marker").T
-        filter_values = [3,2,1,0]
+        # retrieve matrix from object
+        numeric_matrix_transposed = self.numeric_matrix.T
         # filtering and preparing the data
+        filter_values = [3,2,1,0]
         for value in filter_values:
             numeric_matrix_transposed = numeric_matrix_transposed.loc[:,(numeric_matrix_transposed != value).any()]
         numeric_matrix_transposed["Marker"] = numeric_matrix_transposed.index
@@ -312,8 +314,17 @@ class DataMatrix:
         # set max axis scales
         x_range = [PCA_data_frame_final['PC1'].min() - 5, PCA_data_frame_final['PC1'].max() + 5]
         y_range = [PCA_data_frame_final['PC2'].min() - 5, PCA_data_frame_final['PC2'].max() + 5]
+        # Load genotype-group mappings from Excel file
+        genotype_group_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Group_Coding")
+        genotype_group_dict = dict(zip(genotype_group_df["Genotype"], genotype_group_df["Group"]))
+        # Load group-color mappings from Excel file
+        group_color_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Color_Coding")
+        group_color_dict = dict(zip(group_color_df["Group"], group_color_df["Color"]))
+        # Assign colors to genotypes based on their groups
+        genotype_colors = {genotype: group_color_dict.get(genotype_group_dict.get(genotype), "black")
+                       for genotype in PCA_data_frame_final["Genotype"].unique()}
         # create the PCA plot
-        fig=px.scatter(PCA_data_frame_final, x='PC1', y='PC2', title='Principal Component Analysis', hover_data=["Genotype"], color_discrete_sequence=["black"], size_max=14)
+        fig=px.scatter(PCA_data_frame_final, x='PC1', y='PC2', title='Principal Component Analysis', hover_data=["Genotype"], color="Genotype", color_discrete_map=genotype_colors, size_max=25)
         fig.update_traces(textposition='top center')
         fig.update_layout(
             xaxis=dict(title=f'PC1:{explained_variance[0]:.2%}', title_font=dict(size=24),tickfont=dict(size=20), range=x_range),
