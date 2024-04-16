@@ -315,10 +315,10 @@ class DataMatrix:
         x_range = [PCA_data_frame_final['PC1'].min() - 5, PCA_data_frame_final['PC1'].max() + 5]
         y_range = [PCA_data_frame_final['PC2'].min() - 5, PCA_data_frame_final['PC2'].max() + 5]
         # Load genotype-group mappings from Excel file
-        genotype_group_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Group_Coding")
+        genotype_group_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Group_Coding", dtype=object)
         genotype_group_dict = dict(zip(genotype_group_df["Genotype"], genotype_group_df["Group"]))
         # Load group-color mappings from Excel file
-        group_color_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Color_Coding")
+        group_color_df = pd.read_excel(args.color_coding_file_pca, sheet_name="Color_Coding", dtype=object)
         group_color_dict = dict(zip(group_color_df["Group"], group_color_df["Color"]))
         # Assign colors to genotypes based on their groups
         genotype_colors = {genotype: group_color_dict.get(genotype_group_dict.get(genotype), "black")
